@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.log
+streamlit.log
+.env
+.venv/
+.streamlit/
+streamlit_app/.streamlit/secrets.toml
+firebaseKEY/
+*.sqlite3
+.ipynb_checkpoints/
