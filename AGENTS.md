@@ -60,3 +60,10 @@ requirements.txt
 - **NEVER bypass environments or mock integrations without explicit permission** — always ask before creating test scripts that skip actual Firebase/Streamlit setup.
 - **Check for placeholder values** — always verify config files (secrets.toml, etc.) have real values, not placeholders like "admin@youruni.edu" or "YOUR_KEY_ID". Ask user to provide actual values before proceeding.
 - **CRITICAL: Never debug auth/domain issues without first checking secrets file for placeholder values** — 90% of auth problems are caused by placeholder emails/keys not being replaced with real values.
+
+## GitHub Workflow
+- **Commit frequency**: After every 3-5 significant changes
+- **Push frequency**: At end of each work session
+- **Commit message format**: "type: description" (feat:, fix:, docs:, refactor:)
+- **Branch strategy**: Work on main branch for now, create feature branches for major changes
+- **Backup rule**: Never lose work - commit locally even if incomplete
