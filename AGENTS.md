@@ -40,7 +40,7 @@ requirements.txt
 - Keep functions ≤50 LOC when possible; prefer pure functions for scoring.
 - Secrets only via `st.secrets` (cloud) or `.env` (local). Never hardcode.
 - Prefer conda environments; attempt `conda` setup before falling back to `pip` installs.
-- **Always run Python commands with conda environment**: Use `conda activate [env] && python [script]` format - VS Code tends to revert to base environment.
+- **Always run Python commands with conda environment**: Use `conda activate leaderboard_env && python [script]` format - VS Code tends to revert to base environment.
 
 ## Agent Hierarchy & Roles
 

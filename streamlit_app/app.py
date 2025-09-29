@@ -7,6 +7,7 @@ from streamlit_app.auth import signin, signup, send_password_reset
 from streamlit_app.firebase import admin_emails
 from streamlit_app.ui_student import student_view
 from streamlit_app.ui_admin import admin_view
+from streamlit_app.ui_leaderboard import leaderboard_view
 
 def normalize_email(value: str) -> str:
     value = (value or "").strip()
@@ -84,7 +85,19 @@ def login_box():
                 else:
                     st.error("Failed to send reset link. Please try again.")
 
+def _first_query_value(value):
+    if isinstance(value, list):
+        return value[0] if value else ""
+    return value or ""
+
+
 def main():
+    params = st.query_params
+    view_value = _first_query_value(params.get("view"))
+    if view_value.lower() == "leaderboard":
+        leaderboard_view()
+        st.stop()
+
     st.title("🏁 Class Leaderboard")
     user = st.session_state.get("user")
     if not user:

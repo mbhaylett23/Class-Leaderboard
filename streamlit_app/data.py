@@ -12,6 +12,13 @@ def teacher_vote_ref(class_id, session_id, admin_id): return session_ref(class_i
 def team_ref(class_id, team_id): return class_ref(class_id).collection("teams").document(team_id)
 def user_ref(class_id, user_id): return class_ref(class_id).collection("users").document(user_id)
 
+def list_teams(class_id):
+    return [{**d.to_dict(), "id": d.id} for d in class_ref(class_id).collection("teams").stream()]
+
+def get_session(class_id, session_id):
+    doc = session_ref(class_id, session_id).get()
+    return ({**doc.to_dict(), "id": doc.id} if doc.exists else None)
+
 def list_classes():
     return [ {**d.to_dict(), "id": d.id} for d in db.collection("classes").where("archived","==",False).stream() ]
 
