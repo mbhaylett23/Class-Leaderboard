@@ -8,6 +8,7 @@ from streamlit_app.firebase import admin_emails
 from streamlit_app.ui_student import student_view
 from streamlit_app.ui_admin import admin_view
 from streamlit_app.ui_leaderboard import leaderboard_view
+from streamlit_app.ui_settings import settings_view
 
 def normalize_email(value: str) -> str:
     value = (value or "").strip()
@@ -94,22 +95,35 @@ def _first_query_value(value):
 def main():
     params = st.query_params
     view_value = _first_query_value(params.get("view"))
+    user = st.session_state.get("user")
     if view_value.lower() == "leaderboard":
-        leaderboard_view()
+        role = "admin" if user and user["email"].lower() in admin_emails() else "student"
+        leaderboard_view(role=role)
         st.stop()
 
     st.title("🏁 Class Leaderboard")
-    user = st.session_state.get("user")
     if not user:
         login_box()
         st.stop()
 
-    is_admin = user["email"].lower() in admin_emails()
-    view = st.sidebar.radio("View", ["Student","Admin"] if is_admin else ["Student"])
-    if view == "Student":
-        student_view(user)
+    admin_list = admin_emails()
+    is_admin = user["email"].lower() in admin_list
+    if is_admin:
+        nav_options = ["Leaderboard", "Admin Console"]
     else:
+        nav_options = ["Voting", "Leaderboard", "Settings"]
+
+    selection = st.sidebar.radio("Navigation", nav_options, key="sidebar_navigation")
+
+    if selection == "Voting":
+        student_view(user)
+    elif selection == "Admin Console":
         admin_view(user)
+    elif selection == "Settings":
+        settings_view(user)
+    else:  # Leaderboard
+        role = "admin" if is_admin else "student"
+        leaderboard_view(role=role)
 
     if st.sidebar.button("Logout"):
         st.session_state.clear(); st.rerun()
