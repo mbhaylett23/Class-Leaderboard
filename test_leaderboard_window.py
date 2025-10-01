@@ -39,7 +39,11 @@ def test_main_bypasses_auth_for_leaderboard(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(app.st, "rerun", _no_op)
     monkeypatch.setattr(app.st, "caption", _no_op)
     monkeypatch.setattr(app.st, "tabs", lambda labels: [types.SimpleNamespace(__enter__=lambda self: None, __exit__=lambda self, exc_type, exc, tb: None) for _ in labels])
-    monkeypatch.setattr(app, "leaderboard_view", lambda: invoked.__setitem__("leaderboard", True))
+    monkeypatch.setattr(
+        app,
+        "leaderboard_view",
+        lambda role="student": invoked.__setitem__("leaderboard", True),
+    )
     monkeypatch.setattr(app.st, "stop", lambda: (_ for _ in ()).throw(RuntimeError("stop")))
 
     with pytest.raises(RuntimeError):

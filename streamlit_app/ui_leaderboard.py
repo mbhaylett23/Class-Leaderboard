@@ -12,6 +12,8 @@ import streamlit as st
 from . import data
 
 REFRESH_SECONDS = 5
+TEACHER_BAR_COLOR = "#3B82F6"
+PEER_BAR_COLOR = "#16A34A"
 
 
 def _get_query_param(name: str) -> str | None:
@@ -110,6 +112,7 @@ def _build_leaderboard_rows(class_id: str, session: Dict) -> pd.DataFrame:
             "Combined": combined,
             "Teacher": teacher_sum,
             "Peers": peer_sum,
+            "TeamColor": data.get_team_color(team_name or team_id),
         })
 
     df = pd.DataFrame(rows)
@@ -120,8 +123,21 @@ def _build_leaderboard_rows(class_id: str, session: Dict) -> pd.DataFrame:
     return df
 
 
-def leaderboard_view() -> None:
+def leaderboard_view(role: str = "student") -> None:
     """Render a large-format, auto-refreshing leaderboard view."""
+    role_key = (role or "student").strip().lower()
+    is_admin_view = role_key == "admin"
+
+    st.cache_data.clear()
+    st.cache_resource.clear()
+
+    if st.button("🔄 Force Refresh", key="leaderboard_force_refresh"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
+
+    cache_buster = int(time.time())
+
     st.markdown(
         """
         <style>
@@ -165,29 +181,132 @@ def leaderboard_view() -> None:
     top_row = df.iloc[0]
     st.metric("Leaderboard Leader", f"{top_row['Team']} (Score {top_row['Combined']})")
 
-    chart_height = max(280, 70 * len(df))
-    chart = (
-        alt.Chart(df)
-        .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
-        .encode(
-            y=alt.Y("Team:N", sort="-x", title="Team", axis=alt.Axis(labelFontSize=16, titleFontSize=18)),
-            x=alt.X("Combined:Q", title="Weighted Score", axis=alt.Axis(labelFontSize=16, titleFontSize=18)),
-            color=alt.Color(
-                "Rank:O",
-                scale=alt.Scale(scheme="goldred"),
-                legend=None,
-            ),
-            tooltip=["Rank", "Team", "Combined", "Teacher", "Peers"],
-        )
-        .properties(height=chart_height, width="container")
-    )
-    st.altair_chart(chart, use_container_width=True)
+    team_order = df["Team"].tolist()
+    team_colors = df["TeamColor"].tolist()
+    df["CacheKey"] = cache_buster
 
-    st.dataframe(
-        df[["Rank", "Team", "Team ID", "Combined", "Teacher", "Peers"]],
-        use_container_width=True,
-        hide_index=True,
-    )
+    if not is_admin_view:
+        chart_height = max(280, 70 * len(df))
+        chart_data = df[["Team", "Combined", "TeamColor", "Rank", "CacheKey"]]
+        chart = (
+            alt.Chart(chart_data)
+            .mark_bar(cornerRadiusTopRight=6, cornerRadiusBottomRight=6)
+            .encode(
+                y=alt.Y(
+                    "Team:N",
+                    sort=team_order,
+                    title="Team",
+                    axis=alt.Axis(labelFontSize=16, titleFontSize=18),
+                ),
+                x=alt.X(
+                    "Combined:Q",
+                    title="Weighted Score",
+                    axis=alt.Axis(labelFontSize=16, titleFontSize=18),
+                ),
+                color=alt.Color(
+                    "Team:N",
+                    scale=alt.Scale(domain=team_order, range=team_colors),
+                    legend=None,
+                ),
+                detail=alt.Detail("CacheKey:Q"),
+                tooltip=[
+                    alt.Tooltip("Rank:O", title="Rank"),
+                    alt.Tooltip("Team:N", title="Team"),
+                    alt.Tooltip("Combined:Q", title="Weighted Score"),
+                ],
+            )
+            .properties(height=chart_height, width="container")
+        )
+        st.altair_chart(chart, use_container_width=True)
+
+        st.dataframe(
+            df[["Rank", "Team", "Team ID", "Combined"]],
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        admin_rows: List[Dict] = []
+        for _, row in df.iterrows():
+            base = {
+                "Team": row["Team"],
+                "Rank": int(row["Rank"]),
+                "TeamColor": row["TeamColor"],
+                "TeacherTotal": int(row["Teacher"]),
+                "PeerTotal": int(row["Peers"]),
+                "CombinedTotal": int(row["Combined"]),
+                "CacheKey": cache_buster,
+            }
+            admin_rows.append({**base, "ScoreType": "Teacher", "Value": int(row["Teacher"])})
+            admin_rows.append({**base, "ScoreType": "Peers", "Value": int(row["Peers"])})
+            admin_rows.append({**base, "ScoreType": "Combined", "Value": int(row["Combined"])})
+
+        admin_df = pd.DataFrame(admin_rows)
+        teacher_peer_chart = (
+            alt.Chart(admin_df[admin_df["ScoreType"].isin(["Teacher", "Peers"])])
+            .mark_bar(cornerRadiusTopLeft=2, cornerRadiusTopRight=2)
+            .encode(
+                x=alt.X(
+                    "Team:N",
+                    sort=team_order,
+                    title="Team",
+                    axis=alt.Axis(labelFontSize=14, labelAngle=-20),
+                ),
+                y=alt.Y("Value:Q", title="Score"),
+                color=alt.Color(
+                    "ScoreType:N",
+                    scale=alt.Scale(domain=["Teacher", "Peers"], range=[TEACHER_BAR_COLOR, PEER_BAR_COLOR]),
+                    legend=alt.Legend(title="Components"),
+                ),
+                xOffset=alt.XOffset("ScoreType:N"),
+                detail=alt.Detail("CacheKey:Q"),
+                tooltip=[
+                    alt.Tooltip("Team:N", title="Team"),
+                    alt.Tooltip("ScoreType:N", title="Component"),
+                    alt.Tooltip("Value:Q", title="Score"),
+                ],
+            )
+        )
+
+        combined_chart = (
+            alt.Chart(admin_df[admin_df["ScoreType"] == "Combined"])
+            .mark_bar(cornerRadiusTopLeft=2, cornerRadiusTopRight=2)
+            .encode(
+                x=alt.X(
+                    "Team:N",
+                    sort=team_order,
+                    title="Team",
+                    axis=alt.Axis(labelFontSize=14, labelAngle=-20),
+                ),
+                y=alt.Y("Value:Q", title="Score"),
+                color=alt.Color(
+                    "Team:N",
+                    scale=alt.Scale(domain=team_order, range=team_colors),
+                    legend=None,
+                ),
+                xOffset=alt.XOffset("ScoreType:N"),
+                detail=alt.Detail("CacheKey:Q"),
+                tooltip=[
+                    alt.Tooltip("Team:N", title="Team"),
+                    alt.Tooltip("CombinedTotal:Q", title="Weighted"),
+                    alt.Tooltip("TeacherTotal:Q", title="Teacher Sum"),
+                    alt.Tooltip("PeerTotal:Q", title="Student Sum"),
+                ],
+            )
+        )
+
+        chart = (
+            (teacher_peer_chart + combined_chart)
+            .properties(width="container", height=420)
+            .configure_axis(labelFontSize=14, titleFontSize=16)
+        )
+        st.altair_chart(chart, use_container_width=True)
+        st.caption("Teacher (blue), Student (green), Combined (team color)")
+
+        st.dataframe(
+            df[["Rank", "Team", "Team ID", "Teacher", "Peers", "Combined"]],
+            use_container_width=True,
+            hide_index=True,
+        )
 
     time.sleep(REFRESH_SECONDS)
     st.rerun()
