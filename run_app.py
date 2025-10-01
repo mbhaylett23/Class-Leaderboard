@@ -2,13 +2,17 @@
 """Utility launcher for the Streamlit classroom leaderboard."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import List
+from urllib.error import URLError
+from urllib.request import urlopen
 
 try:
     import psutil  # type: ignore
@@ -37,10 +41,24 @@ def find_streamlit_processes() -> List[psutil.Process]:
         if proc.info.get("pid") == current_pid:
             continue
         try:
-            cmdline = proc.info.get("cmdline") or []
             name = (proc.info.get("name") or "").lower()
-            if "streamlit" in name or any("streamlit" in part for part in cmdline):
-                matches.append(proc)
+            if "python" not in name and "streamlit" not in name:
+                continue
+
+            cmdline_parts = proc.info.get("cmdline") or []
+            if not cmdline_parts:
+                continue
+            cmdline_lower_parts = [part.lower() for part in cmdline_parts]
+            has_streamlit = any("streamlit" in part for part in cmdline_lower_parts)
+            has_run_flag = "run" in cmdline_lower_parts
+            if not (has_streamlit and has_run_flag):
+                continue
+
+            matches.append(proc)
+            print_status(
+                "Detected Streamlit process PID="
+                f"{proc.pid} cmdline={' '.join(cmdline_parts)}"
+            )
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return matches
@@ -111,8 +129,8 @@ def conda_env_exists(env_name: str) -> bool:
     return any(Path(path).name == env_name for path in envs)
 
 
-def start_streamlit(use_conda: bool) -> int:
-    """Launch Streamlit (optionally via conda run) and stream logs until exit."""
+def launch_streamlit_process(use_conda: bool) -> subprocess.Popen:
+    """Start Streamlit and return the running process."""
     if use_conda:
         cmd = ["conda", "run", "-n", ENV_NAME, "streamlit", "run", str(APP_PATH)]
         print_status(f"Starting Streamlit via conda environment '{ENV_NAME}'.")
@@ -127,6 +145,12 @@ def start_streamlit(use_conda: bool) -> int:
     print_status(f"Leaderboard URL: {LEADERBOARD_URL}")
     process = subprocess.Popen(cmd, cwd=ROOT, env=env)
     print_status(f"Streamlit process started with PID={process.pid}.")
+    return process
+
+
+def start_streamlit(use_conda: bool) -> int:
+    """Launch Streamlit (optionally via conda run) and stream logs until exit."""
+    process = launch_streamlit_process(use_conda)
     try:
         return process.wait()
     except KeyboardInterrupt:
@@ -140,8 +164,73 @@ def start_streamlit(use_conda: bool) -> int:
         return 0
 
 
+def run_test_cycle(use_conda: bool) -> bool:
+    """Run a short non-blocking validation of the launcher."""
+    print_status("Running launcher in --test mode (short validation cycle).")
+    process = launch_streamlit_process(use_conda)
+    try:
+        deadline = time.time() + 10
+        ready = False
+        while time.time() < deadline:
+            try:
+                with urlopen(MAIN_URL, timeout=3) as response:
+                    status = getattr(response, "status", response.getcode())
+                    if 200 <= status < 500:
+                        ready = True
+                        break
+            except (URLError, TimeoutError):
+                time.sleep(1)
+        if not ready:
+            print_status("Failed to reach Streamlit app within 10 seconds during test mode.")
+            return False
+        print_status("Streamlit app responded successfully; verifying process detection.")
+        detected = find_streamlit_processes()
+        observed_pids = {proc.pid for proc in detected}
+        relevant_pids = {process.pid}
+        try:
+            wrapper = psutil.Process(process.pid)
+            relevant_pids.update(child.pid for child in wrapper.children(recursive=True))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        if not observed_pids.intersection(relevant_pids):
+            print_status("Failed to detect the Streamlit process via psutil filters.")
+            return False
+        print_status(
+            "Confirmed detection of Streamlit PID(s): "
+            + ", ".join(str(pid) for pid in sorted(observed_pids.intersection(relevant_pids)))
+        )
+        kill_existing_streamlit()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            print_status(f"Process PID={process.pid} did not exit gracefully; forcing kill.")
+            process.kill()
+            process.wait()
+        print_status("Test mode shutdown complete.")
+        return True
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Launcher for the Class Leaderboard Streamlit app.")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Run a short validation cycle that starts Streamlit, verifies it, and exits.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
     """Entrypoint orchestrating environment checks and process management."""
+    args = parse_args()
     print_status("Checking environment...")
     check_environment()
     kill_existing_streamlit()
@@ -150,6 +239,12 @@ def main() -> None:
         print_status("Conda environment detected. Using `conda run` to launch Streamlit.")
     else:
         print_status("Proceeding without conda run. Ensure dependencies are installed here.")
+    if args.test:
+        success = run_test_cycle(env_available)
+        if not success:
+            raise SystemExit(1)
+        print_status("Test mode completed successfully.")
+        return
     exit_code = start_streamlit(env_available)
     if exit_code:
         raise SystemExit(exit_code)
