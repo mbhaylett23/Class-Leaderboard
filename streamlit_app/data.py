@@ -1,3 +1,4 @@
+import hashlib
 import streamlit as st
 from typing import List, Dict
 from datetime import datetime
@@ -94,3 +95,30 @@ def aggregate_scores(class_id, session_id, categories: List[dict], teacherPct: i
     for t,vals in per_team.items():
         vals["combined"] = int(vals["peer_sum"] * (peersPct/100.0) + vals["teacher_sum"] * (teacherPct/100.0))
     return per_team
+
+
+_TEAM_COLOR_PALETTE = [
+    "#636EFA",  # vivid indigo
+    "#EF553B",  # soft red
+    "#00CC96",  # bright green
+    "#AB63FA",  # lavender
+    "#FFA15A",  # warm orange
+    "#19D3F3",  # aqua blue
+    "#FF6692",  # pink coral
+    "#B6E880",  # lime tint
+    "#FF97FF",  # fuchsia
+    "#FECB52",  # amber
+]
+_TEAM_COLOR_DEFAULT = "#636EFA"
+
+
+def get_team_color(team_name: str) -> str:
+    """Return a deterministic color for a team name or identifier."""
+    if not team_name:
+        return _TEAM_COLOR_DEFAULT
+    normalized = team_name.strip().lower()
+    if not normalized:
+        return _TEAM_COLOR_DEFAULT
+    digest = hashlib.sha256(normalized.encode("utf-8")).digest()
+    index = digest[0] % len(_TEAM_COLOR_PALETTE)
+    return _TEAM_COLOR_PALETTE[index]
