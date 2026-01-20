@@ -78,6 +78,33 @@ def admin_view(user):
                 data.set_session_status(class_id, pick, "archived"); st.rerun()
 
         if pick:
+            st.subheader("Export Data")
+            export_cols = st.columns(3)
+            with export_cols[0]:
+                csv_data = data.export_to_csv(class_id, pick)
+                if csv_data:
+                    st.download_button(
+                        label="Export CSV",
+                        data=csv_data,
+                        file_name=f"session_{pick}_rankings.csv",
+                        mime="text/csv",
+                        key=f"export_csv_{pick}",
+                    )
+                else:
+                    st.button("Export CSV", disabled=True, key=f"export_csv_disabled_{pick}")
+            with export_cols[1]:
+                excel_data = data.export_to_excel(class_id, pick)
+                if excel_data:
+                    st.download_button(
+                        label="Export Excel",
+                        data=excel_data,
+                        file_name=f"session_{pick}_rankings.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"export_excel_{pick}",
+                    )
+                else:
+                    st.button("Export Excel", disabled=True, key=f"export_excel_disabled_{pick}")
+
             st.subheader("Teacher Voting")
             team_cols = st.columns([2, 1])
             with team_cols[0]:
