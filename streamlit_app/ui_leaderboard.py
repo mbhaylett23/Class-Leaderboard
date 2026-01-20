@@ -166,6 +166,34 @@ def leaderboard_view(role: str = "student") -> None:
 
     st.markdown(f"<div class='leaderboard-title'>🏆 {session.get('title', 'Live Leaderboard')}</div>", unsafe_allow_html=True)
 
+    # Export buttons for admin view
+    if is_admin_view:
+        export_cols = st.columns([1, 1, 1, 3])
+        with export_cols[0]:
+            csv_data = data.export_to_csv(class_id, session["id"])
+            if csv_data:
+                st.download_button(
+                    label="Export CSV",
+                    data=csv_data,
+                    file_name=f"session_{session['id']}_rankings.csv",
+                    mime="text/csv",
+                    key="leaderboard_export_csv",
+                )
+        with export_cols[1]:
+            excel_data = data.export_to_excel(class_id, session["id"])
+            if excel_data:
+                st.download_button(
+                    label="Export Excel",
+                    data=excel_data,
+                    file_name=f"session_{session['id']}_rankings.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="leaderboard_export_excel",
+                )
+        with export_cols[2]:
+            if st.button("Back to Dashboard", key="back_to_dashboard"):
+                st.query_params.clear()
+                st.rerun()
+
     df = _build_leaderboard_rows(class_id, session)
     timestamp = datetime.now().strftime("%H:%M:%S")
     st.markdown(
